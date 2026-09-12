@@ -1,0 +1,73 @@
+{
+  "project_name": "Pharma Project Analytics",
+  "description": "Medicine inventory, expiry and stock-risk analytics dashboard",
+  "version": "1.0.0-phase1",
+  "hooks": {
+    "preToolUse": {
+      "enabled": true,
+      "script": ".claude/hooks/safety_check.py",
+      "description": "Safety validation: blocks destructive commands, secret access, and out-of-scope operations",
+      "trigger": {
+        "tools": ["bash", "Bash"],
+        "events": ["beforeExecute"]
+      }
+    },
+    "postToolUse": {
+      "enabled": true,
+      "script": ".claude/hooks/quality_check.py",
+      "description": "Quality validation: checks Python syntax, imports, and hardcoded secrets",
+      "trigger": {
+        "tools": ["write", "edit", "Write", "Edit"],
+        "filePatterns": ["**/*.py"],
+        "events": ["afterWrite"]
+      }
+    }
+  },
+  "skills": {
+    "pharma-risk": {
+      "path": ".claude/skills/pharma-risk/SKILL.md",
+      "enabled": true,
+      "description": "Expiry date and stock level risk calculation rules"
+    },
+    "professional-ui": {
+      "path": ".claude/skills/professional-ui/SKILL.md",
+      "enabled": true,
+      "description": "Professional UI and accessibility standards for Streamlit dashboard"
+    }
+  },
+  "agents": {
+    "pharma-auditor": {
+      "path": ".claude/agents/pharma-auditor.md",
+      "enabled": true,
+      "description": "Read-only auditor for data quality, risk calculations, security, and governance compliance",
+      "mode": "readonly"
+    }
+  },
+  "codeStyle": {
+    "language": "python",
+    "formatter": "black",
+    "linter": "pylint",
+    "typeChecker": "mypy",
+    "targetVersion": "3.9+"
+  },
+  "testing": {
+    "framework": "pytest",
+    "minCoverage": 80,
+    "coveragePaths": ["src/**/*.py"],
+    "testPaths": ["tests/**/*.py"]
+  },
+  "security": {
+    "blockSecretAccess": true,
+    "blockDestructiveDeletion": true,
+    "requireProjectScope": true,
+    "validateInputs": true
+  },
+  "governance": {
+    "syntheticDataOnly": true,
+    "noPatientData": true,
+    "noClinicialData": true,
+    "dataMinimization": true,
+    "auditTrailRequired": true,
+    "humanReviewForCriticalRisk": true
+  }
+}
