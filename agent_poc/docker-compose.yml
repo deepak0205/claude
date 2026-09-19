@@ -1,0 +1,25 @@
+# Local dev Neo4j for agent_poc. Neo4j 5.11+ ships a native vector index
+# (used by rag/schema.py's `chunk_embeddings` index) with no extra plugin
+# required, so a plain community image is enough for this POC.
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: agent_poc_neo4j
+    ports:
+      - "7687:7687"  # bolt (driver traffic — rag/neo4j_client.py)
+      - "7474:7474"  # http (browser UI / cypher-shell over http)
+    environment:
+      # neo4j:5 expects a single NEO4J_AUTH=user/password env var; sourced
+      # from the same NEO4J_USER/NEO4J_PASSWORD keys as .env.example so both
+      # the container and config/settings.py stay in sync.
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  neo4j_data:
