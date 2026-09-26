@@ -1,0 +1,26 @@
+{
+  "PLAN.md": {
+    "mtime": 1790414245.9686298,
+    "seen": 1790420552.2761884,
+    "ast_hash": "b7c412ebaa398fd0d7c08ec774088e56",
+    "semantic_hash": "b7c412ebaa398fd0d7c08ec774088e56"
+  },
+  "claude-healthcare-case-studies.md": {
+    "mtime": 1790414245.9685774,
+    "seen": 1790420552.276195,
+    "ast_hash": "b3846de738d5d7a5fe527b2b9fc47498",
+    "semantic_hash": "b3846de738d5d7a5fe527b2b9fc47498"
+  },
+  "elation-health-development-plan.md": {
+    "mtime": 1790414245.96963,
+    "seen": 1790420552.276198,
+    "ast_hash": "2e07e3be422ee55dd6a7cde43d2851ae",
+    "semantic_hash": "2e07e3be422ee55dd6a7cde43d2851ae"
+  },
+  "elation-health-hld-lld.md": {
+    "mtime": 1790414245.969503,
+    "seen": 1790420552.2761996,
+    "ast_hash": "00981b4daf539fd9e5cbf92f7db84986",
+    "semantic_hash": "00981b4daf539fd9e5cbf92f7db84986"
+  }
+}

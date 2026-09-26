@@ -1,0 +1,110 @@
+# Local dev Neo4j for agent_poc. Neo4j 5.11+ ships a native vector index
+# (used by rag/schema.py's `chunk_embeddings` index) with no extra plugin
+# required, so a plain community image is enough for this POC.
+#
+# Addendum 4 ("Observability — OpenTelemetry + SigNoz") adds the SigNoz
+# self-hosted stack below (zookeeper, clickhouse, signoz-otel-collector,
+# signoz-query-service, signoz-frontend), following SigNoz's documented
+# self-hosted architecture (alertmanager omitted as unnecessary for a POC).
+# Every SigNoz service is tagged `profiles: ["observability"]` so a plain
+# `docker compose up -d` / `docker compose up -d neo4j` never starts them —
+# only `docker compose --profile observability up -d` does. This section is
+# best-effort (no Docker/network access in this sandbox to verify it live);
+# flag to the user as part of manual verification, same posture as the base
+# plan's Neo4j note.
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: agent_poc_neo4j
+    ports:
+      - "7687:7687"  # bolt (driver traffic — rag/neo4j_client.py)
+      - "7474:7474"  # http (browser UI / cypher-shell over http)
+    environment:
+      # neo4j:5 expects a single NEO4J_AUTH=user/password env var; sourced
+      # from the same NEO4J_USER/NEO4J_PASSWORD keys as .env.example so both
+      # the container and config/settings.py stay in sync.
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- SigNoz (observability profile) ---
+
+  zookeeper:
+    image: bitnami/zookeeper:3.7
+    container_name: agent_poc_zookeeper
+    profiles: ["observability"]
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1.2-alpine
+    container_name: agent_poc_clickhouse
+    profiles: ["observability"]
+    depends_on:
+      - zookeeper
+    ports:
+      - "9000:9000"   # native TCP (signoz-otel-collector, signoz-query-service)
+      - "8123:8123"   # HTTP interface
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:0.111.24
+    container_name: agent_poc_signoz_otel_collector
+    profiles: ["observability"]
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      - clickhouse
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+    ports:
+      - "4317:4317"  # OTLP gRPC — matches settings.OTEL_EXPORTER_OTLP_ENDPOINT
+      - "4318:4318"  # OTLP HTTP
+
+  signoz-query-service:
+    image: signoz/query-service:0.66.0
+    container_name: agent_poc_signoz_query_service
+    profiles: ["observability"]
+    command: ["-config=/root/config/prometheus.yml"]
+    depends_on:
+      - clickhouse
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      SIGNOZ_LOCAL_DB_PATH: /var/lib/signoz/signoz.db
+    ports:
+      - "8080:8080"  # internal query API, consumed by signoz-frontend
+    volumes:
+      - signoz_query_service_data:/var/lib/signoz
+
+  signoz-frontend:
+    image: signoz/frontend:0.66.0
+    container_name: agent_poc_signoz_frontend
+    profiles: ["observability"]
+    depends_on:
+      - signoz-query-service
+    ports:
+      - "3301:3301"  # SigNoz UI — http://localhost:3301
+
+volumes:
+  neo4j_data:
+  zookeeper_data:
+  clickhouse_data:
+  signoz_query_service_data:

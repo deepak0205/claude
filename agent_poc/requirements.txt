@@ -1,0 +1,17 @@
+anthropic
+langgraph
+neo4j
+voyageai
+biopython
+fastapi
+uvicorn
+streamlit
+pydantic
+pydantic-settings
+python-dotenv
+tenacity
+requests
+pytest
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
