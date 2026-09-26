@@ -31,6 +31,7 @@ identity without depending on exact whitespace/formatting.
 from ingestion.embedding import embed_query
 from rag.neo4j_client import run_query
 from agents.state import Evidence
+from config.telemetry import retrieval_result_count_histogram, traced, tracer
 
 _BIAS_LABELS = {
     "disease": "Disease",
@@ -102,6 +103,7 @@ RETURN DISTINCT p2.pmid AS pmid, p2.title AS title, p2.journal AS journal,
 """
 
 
+@traced("retriever.hybrid_search")
 def hybrid_search(
     query: str,
     entity_bias: str | None,
@@ -113,19 +115,25 @@ def hybrid_search(
     (boosted) similarity score descending."""
     embedding = embed_query(query)
 
-    candidates = _vector_search(embedding, candidate_pool)
+    with tracer.start_as_current_span("retriever.vector_search"):
+        candidates = _vector_search(embedding, candidate_pool)
     if not candidates:
+        retrieval_result_count_histogram.record(0)
         return []
 
-    _apply_entity_bias(candidates, entity_bias)
+    with tracer.start_as_current_span("retriever.bias_boost"):
+        _apply_entity_bias(candidates, entity_bias)
 
     seeds = sorted(candidates, key=lambda r: r["score"], reverse=True)[:_EXPANSION_SEED_COUNT]
-    expanded = _graph_expand(seeds)
+    with tracer.start_as_current_span("retriever.graph_expand"):
+        expanded = _graph_expand(seeds)
 
     combined = _dedupe(candidates + expanded)
     combined.sort(key=lambda r: r["score"], reverse=True)
 
-    return [_row_to_evidence(row) for row in combined[:top_k]]
+    evidence = [_row_to_evidence(row) for row in combined[:top_k]]
+    retrieval_result_count_histogram.record(len(evidence))
+    return evidence
 
 
 def _vector_search(embedding: list[float], candidate_pool: int) -> list[dict]:

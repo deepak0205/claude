@@ -24,6 +24,7 @@ import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+from config.telemetry import ingestion_stage_counter, traced
 
 _retry_on_request_error = retry(
     reraise=True,
@@ -61,6 +62,7 @@ def _fetch_activities(target_chembl_id: str, limit: int) -> list[dict]:
     return data.get("activities") or []
 
 
+@traced("ingestion.chembl_client.fetch_molecules_for_targets")
 def fetch_molecules_for_targets(target_names: list[str], limit_per_target: int = 50) -> list[dict]:
     """For each target name, resolve its ChEMBL target ID then fetch
     associated bioactivity records, returning a deduped flat list of
@@ -92,9 +94,14 @@ def fetch_molecules_for_targets(target_names: list[str], limit_per_target: int =
                     "target_name": target_name.lower(),
                 },
             )
-    return list(molecules_by_name.values())
+    molecules = list(molecules_by_name.values())
+    ingestion_stage_counter.add(
+        len(molecules), {"module": "chembl_client", "function": "fetch_molecules_for_targets"}
+    )
+    return molecules
 
 
+@traced("ingestion.chembl_client.to_target_relations")
 def to_target_relations(molecules: list[dict]) -> list[dict]:
     """Shape `fetch_molecules_for_targets`'s output for
     `neo4j_loader.load_targets_relation` (`molecule_name`, `target_name`,

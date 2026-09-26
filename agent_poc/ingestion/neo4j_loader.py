@@ -9,10 +9,12 @@ any source stays idempotent (every write is a `MERGE`).
 """
 
 from rag.neo4j_client import run_query
+from config.telemetry import ingestion_stage_counter, traced
 
 _ENTITY_LABELS = {"Disease", "Target", "Molecule"}
 
 
+@traced("ingestion.neo4j_loader.load_papers")
 def load_papers(papers: list[dict]) -> None:
     """MERGE `Paper` nodes by `pmid`, SET other properties.
 
@@ -34,6 +36,7 @@ def load_papers(papers: list[dict]) -> None:
         """,
         batch=papers,
     )
+    ingestion_stage_counter.add(len(papers), {"module": "neo4j_loader", "function": "load_papers"})
 
 
 _CHUNK_SET_CLAUSE = """
@@ -47,6 +50,7 @@ _CHUNK_SET_CLAUSE = """
 """
 
 
+@traced("ingestion.neo4j_loader.load_chunks")
 def load_chunks(chunks: list[dict]) -> None:
     """MERGE `Chunk` nodes by `chunk_id`, SET props (including `embedding`
     and `source`), and link each chunk to its owning parent node.
@@ -92,7 +96,10 @@ def load_chunks(chunks: list[dict]) -> None:
             batch=trial_chunks,
         )
 
+    ingestion_stage_counter.add(len(chunks), {"module": "neo4j_loader", "function": "load_chunks"})
 
+
+@traced("ingestion.neo4j_loader.load_entities")
 def load_entities(entities: list[dict], label: str) -> None:
     """Generic MERGE-by-`name` loader for Disease/Target/Molecule nodes.
 
@@ -124,8 +131,10 @@ def load_entities(entities: list[dict], label: str) -> None:
         """
 
     run_query(cypher, batch=entities)
+    ingestion_stage_counter.add(len(entities), {"module": "neo4j_loader", "function": "load_entities"})
 
 
+@traced("ingestion.neo4j_loader.load_mentions")
 def load_mentions(mentions: list[dict]) -> None:
     """MERGE `(Chunk)-[:MENTIONS]->(entity)` plus the `(Paper)-[:MENTIONS]
     ->(entity)` rollup, matching by `chunk_id`/`pmid` + entity `label` +
@@ -148,8 +157,10 @@ def load_mentions(mentions: list[dict]) -> None:
         """,
         batch=mentions,
     )
+    ingestion_stage_counter.add(len(mentions), {"module": "neo4j_loader", "function": "load_mentions"})
 
 
+@traced("ingestion.neo4j_loader.load_associations")
 def load_associations(associations: list[dict]) -> None:
     """MERGE `(Disease)-[:ASSOCIATED_WITH]->(Target)`, appending `source`
     into the relationship's `sources` list property (deduped, pure Cypher —
@@ -174,8 +185,12 @@ def load_associations(associations: list[dict]) -> None:
         """,
         batch=associations,
     )
+    ingestion_stage_counter.add(
+        len(associations), {"module": "neo4j_loader", "function": "load_associations"}
+    )
 
 
+@traced("ingestion.neo4j_loader.load_targets_relation")
 def load_targets_relation(relations: list[dict]) -> None:
     """MERGE `(Molecule)-[:TARGETS]->(Target)`, same `sources` append
     pattern as `load_associations`, optionally setting `opentargets_score`.
@@ -199,8 +214,12 @@ def load_targets_relation(relations: list[dict]) -> None:
         """,
         batch=relations,
     )
+    ingestion_stage_counter.add(
+        len(relations), {"module": "neo4j_loader", "function": "load_targets_relation"}
+    )
 
 
+@traced("ingestion.neo4j_loader.load_trials")
 def load_trials(trials: list[dict]) -> None:
     """MERGE `Trial` nodes by `nct_id`, SET props; MERGE
     `(Trial)-[:STUDIES]->(Molecule)` and `(Trial)-[:FOR_CONDITION]->
@@ -233,3 +252,4 @@ def load_trials(trials: list[dict]) -> None:
         """,
         batch=trials,
     )
+    ingestion_stage_counter.add(len(trials), {"module": "neo4j_loader", "function": "load_trials"})

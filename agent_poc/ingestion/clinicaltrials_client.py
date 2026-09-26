@@ -13,6 +13,7 @@ import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+from config.telemetry import ingestion_stage_counter, traced
 
 _retry_on_request_error = retry(
     reraise=True,
@@ -31,6 +32,7 @@ def _get(url: str, params: dict) -> dict:
     return response.json()
 
 
+@traced("ingestion.clinicaltrials_client.fetch_trials")
 def fetch_trials(condition: str, intervention: str | None = None, max_results: int = 50) -> list[dict]:
     """Query `/studies?query.cond=<condition>&query.intr=<intervention>` and
     return a flat list of trial dicts: `nct_id, title, phase, status,
@@ -73,9 +75,13 @@ def fetch_trials(condition: str, intervention: str | None = None, max_results: i
                 "brief_summary": desc_mod.get("briefSummary") or "",
             }
         )
+    ingestion_stage_counter.add(
+        len(trials), {"module": "clinicaltrials_client", "function": "fetch_trials"}
+    )
     return trials
 
 
+@traced("ingestion.clinicaltrials_client.to_trial_records")
 def to_trial_records(
     trials: list[dict], molecule_name: str | None = None, disease_name: str | None = None
 ) -> list[dict]:
@@ -107,6 +113,7 @@ def to_trial_records(
     return records
 
 
+@traced("ingestion.clinicaltrials_client.chunk_brief_summaries")
 def chunk_brief_summaries(trials: list[dict]) -> list[dict]:
     """One chunk per trial's `brief_summary`, shaped to match
     `ingestion.chunking.py`'s documented chunk dict shape: `{chunk_id, text,
@@ -140,4 +147,7 @@ def chunk_brief_summaries(trials: list[dict]) -> list[dict]:
                 "source": "clinicaltrials",
             }
         )
+    ingestion_stage_counter.add(
+        len(chunks), {"module": "clinicaltrials_client", "function": "chunk_brief_summaries"}
+    )
     return chunks

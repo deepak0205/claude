@@ -18,6 +18,7 @@ from Bio import Entrez
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+from config.telemetry import ingestion_stage_counter, traced
 
 _BATCH_SIZE = 50
 
@@ -51,10 +52,15 @@ def _efetch_batch(pmids: list[str]):
         handle.close()
 
 
+@traced("ingestion.pubmed_client.search_pmids")
 def search_pmids(query: str, max_results: int) -> list[str]:
     """Return up to `max_results` PMIDs matching `query` via `esearch`."""
     record = _esearch(query, max_results)
-    return list(record.get("IdList", []))
+    pmids = list(record.get("IdList", []))
+    ingestion_stage_counter.add(
+        len(pmids), {"module": "pubmed_client", "function": "search_pmids"}
+    )
+    return pmids
 
 
 def _extract_abstract_text(article: dict) -> str:
@@ -109,6 +115,7 @@ def _parse_record(pubmed_article: dict) -> dict | None:
     }
 
 
+@traced("ingestion.pubmed_client.fetch_abstracts")
 def fetch_abstracts(pmids: list[str]) -> list[dict]:
     """Fetch abstract records for `pmids` in batches of `_BATCH_SIZE`.
 
@@ -125,4 +132,7 @@ def fetch_abstracts(pmids: list[str]) -> list[dict]:
             parsed = _parse_record(pubmed_article)
             if parsed is not None:
                 results.append(parsed)
+    ingestion_stage_counter.add(
+        len(results), {"module": "pubmed_client", "function": "fetch_abstracts"}
+    )
     return results

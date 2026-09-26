@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from agents import llm
 from config.settings import settings
+from config.telemetry import memory_fold_counter, traced
 
 
 class Turn(BaseModel):
@@ -40,6 +41,7 @@ def _render_turns(turns: list[Turn]) -> str:
     return "\n\n".join(f"Q: {t.query}\nA: {t.answer}" for t in turns)
 
 
+@traced("memory.fold_into_summary")
 def _fold_into_summary(existing_summary: str, overflow_turns: list[Turn]) -> str:
     """Merge `existing_summary` with `overflow_turns` into one updated summary.
 
@@ -111,6 +113,7 @@ def add_turn(memory: ConversationMemory, query: str, answer: str, citations: lis
         overflow_count = len(turns) - settings.MEMORY_ACTIVE_TURNS
         overflow_turns = turns[:overflow_count]
         turns = turns[overflow_count:]
+        memory_fold_counter.add(1)
         summary = _fold_into_summary(summary, overflow_turns)
 
     return ConversationMemory(session_id=memory.session_id, turns=turns, summary=summary)
@@ -129,6 +132,7 @@ def build_context(memory: ConversationMemory, model: str) -> str:
     return f"Summary of earlier conversation:\n{summary}\n\nRecent exchanges:\n{active_text}"
 
 
+@traced("memory.contextualize_query")
 def contextualize_query(memory: ConversationMemory, query: str) -> str:
     """Resolve pronouns/references from history into one self-contained
     query, so the Supervisor and sub-agents can stay unaware of history."""

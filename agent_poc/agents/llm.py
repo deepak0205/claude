@@ -9,8 +9,12 @@ sub-agents, and Evidence Synthesis Agent in later phases.
 import anthropic
 
 from config.settings import settings
+from config.telemetry import record_llm_usage, traced, tracer
 
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+_client_kwargs = {"api_key": settings.ANTHROPIC_API_KEY}
+if settings.ANTHROPIC_BASE_URL:
+    _client_kwargs["base_url"] = settings.ANTHROPIC_BASE_URL
+client = anthropic.Anthropic(**_client_kwargs)
 
 
 def count_tokens(model: str, text: str) -> int:
@@ -22,6 +26,7 @@ def count_tokens(model: str, text: str) -> int:
     return result.input_tokens
 
 
+@traced("llm.call_tool")
 def call_tool(
     model: str,
     system: str,
@@ -36,20 +41,22 @@ def call_tool(
     is forced to call `tool_name` via `tool_choice`, so the response is
     always structured — never free text.
     """
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=system,
-        messages=[{"role": "user", "content": user_content}],
-        tools=[
-            {
-                "name": tool_name,
-                "description": f"Return the result via the {tool_name} tool.",
-                "input_schema": tool_schema,
-            }
-        ],
-        tool_choice={"type": "tool", "name": tool_name},
-    )
+    with tracer.start_as_current_span("llm.messages.create"):
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
+            tools=[
+                {
+                    "name": tool_name,
+                    "description": f"Return the result via the {tool_name} tool.",
+                    "input_schema": tool_schema,
+                }
+            ],
+            tool_choice={"type": "tool", "name": tool_name},
+        )
+    record_llm_usage(response, model=model, function="call_tool")
 
     for block in response.content:
         if block.type == "tool_use" and block.name == tool_name:
@@ -58,6 +65,7 @@ def call_tool(
     raise ValueError(f"No tool_use block for '{tool_name}' found in response")
 
 
+@traced("llm.run_agent_loop")
 def run_agent_loop(
     model: str,
     system,
@@ -89,14 +97,16 @@ def run_agent_loop(
     messages = [{"role": "user", "content": user_content}]
 
     for _ in range(max_iterations):
-        response = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=system,
-            messages=messages,
-            tools=all_tools,
-            tool_choice={"type": "any", "disable_parallel_tool_use": True},
-        )
+        with tracer.start_as_current_span("llm.messages.create"):
+            response = client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=system,
+                messages=messages,
+                tools=all_tools,
+                tool_choice={"type": "any", "disable_parallel_tool_use": True},
+            )
+        record_llm_usage(response, model=model, function="run_agent_loop")
         messages.append({"role": "assistant", "content": response.content})
 
         tool_use_block = None
@@ -128,14 +138,16 @@ def run_agent_loop(
 
         messages.append({"role": "user", "content": [tool_result]})
 
-    final_response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        system=system,
-        messages=messages,
-        tools=[all_tools[-1]],
-        tool_choice={"type": "tool", "name": finish_tool_name, "disable_parallel_tool_use": True},
-    )
+    with tracer.start_as_current_span("llm.messages.create"):
+        final_response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system,
+            messages=messages,
+            tools=[all_tools[-1]],
+            tool_choice={"type": "tool", "name": finish_tool_name, "disable_parallel_tool_use": True},
+        )
+    record_llm_usage(final_response, model=model, function="run_agent_loop")
     for block in final_response.content:
         if block.type == "tool_use" and block.name == finish_tool_name:
             return block.input

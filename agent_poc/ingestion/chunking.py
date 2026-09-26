@@ -10,6 +10,8 @@ words and tokens are close enough at this threshold for a chunking decision,
 which only needs to be roughly right, not exact).
 """
 
+from config.telemetry import ingestion_stage_counter, traced
+
 _LONG_TEXT_TOKEN_THRESHOLD = 500
 _WINDOW_WORDS = 400
 _OVERLAP_WORDS = 50
@@ -50,6 +52,7 @@ def _sliding_window_spans(text: str, window_words: int, overlap_words: int) -> l
     return spans
 
 
+@traced("ingestion.chunking.chunk_text")
 def chunk_text(text: str, source: str, chunk_id_prefix: str) -> list[dict]:
     """Split `text` into one or more chunk dicts.
 
@@ -80,4 +83,5 @@ def chunk_text(text: str, source: str, chunk_id_prefix: str) -> list[dict]:
                 "source": source,
             }
         )
+    ingestion_stage_counter.add(len(chunks), {"module": "chunking", "function": "chunk_text"})
     return chunks

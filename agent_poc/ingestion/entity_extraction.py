@@ -12,6 +12,7 @@ import anthropic
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from agents import llm
+from config.telemetry import traced
 
 # Matches the plan's "Model / Embedding Choices" table entry for ingestion
 # entity extraction (bulk structured extraction, run once at seed time).
@@ -114,6 +115,7 @@ def _call_record_entities(abstract_text: str) -> dict:
     )
 
 
+@traced("ingestion.entity_extraction.extract_entities")
 def extract_entities(abstract_text: str) -> dict:
     """Extract diseases/targets/molecules + their relations from one abstract.
 

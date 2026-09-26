@@ -27,6 +27,7 @@ import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config.settings import settings
+from config.telemetry import ingestion_stage_counter, traced
 
 _retry_on_request_error = retry(
     reraise=True,
@@ -84,6 +85,7 @@ def _post_graphql(query: str, variables: dict) -> dict:
     return payload.get("data") or {}
 
 
+@traced("ingestion.opentargets_client.fetch_disease_target_associations")
 def fetch_disease_target_associations(disease_efo_ids_or_names: list[str], top_n: int = 25) -> list[dict]:
     """For each EFO ID, fetch its top `top_n` associated targets and return
     dicts shaped for `neo4j_loader.load_associations` (`disease_name,
@@ -107,9 +109,13 @@ def fetch_disease_target_associations(disease_efo_ids_or_names: list[str], top_n
                     "opentargets_score": row.get("score"),
                 }
             )
+    ingestion_stage_counter.add(
+        len(results), {"module": "opentargets_client", "function": "fetch_disease_target_associations"}
+    )
     return results
 
 
+@traced("ingestion.opentargets_client.fetch_target_molecule_mechanisms")
 def fetch_target_molecule_mechanisms(target_names: list[str], top_n: int = 25) -> list[dict]:
     """For each Ensembl target ID, fetch its top `top_n` known drugs and
     return dicts shaped for `neo4j_loader.load_targets_relation`
@@ -132,4 +138,7 @@ def fetch_target_molecule_mechanisms(target_names: list[str], top_n: int = 25) -
                     "source": "opentargets",
                 }
             )
+    ingestion_stage_counter.add(
+        len(results), {"module": "opentargets_client", "function": "fetch_target_molecule_mechanisms"}
+    )
     return results

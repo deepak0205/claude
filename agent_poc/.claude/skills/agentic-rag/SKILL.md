@@ -44,6 +44,48 @@ uvicorn api.main:app --reload &
 streamlit run ui/app.py
 ```
 
+### Observability (OpenTelemetry + SigNoz)
+
+Set `OTEL_ENABLED=true` in `.env` (default is `false`, a genuine no-op), then
+start the SigNoz stack alongside Neo4j via its `observability` Compose
+profile — it doesn't start on a plain `docker compose up -d`:
+
+```bash
+docker compose --profile observability up -d
+```
+
+SigNoz's UI is reachable at `http://localhost:3301` once the stack is up.
+Every LLM call, agent tool-use loop, memory fold, Neo4j query, and ingestion
+stage emits traces + metrics via OTLP (`config/telemetry.py`).
+
+### Load testing
+
+Requires the [k6](https://k6.io) CLI (a standalone binary, not a pip package)
+and a running API (`uvicorn api.main:app`). Two scripts live in
+`scripts/load_test/`:
+
+```bash
+# cheap baseline: GET /health only, no LLM/Neo4j cost
+k6 run scripts/load_test/health_smoke_test.js
+
+# real end-to-end load: POST /query, ramping 1 -> 10 -> 20 VUs
+k6 run scripts/load_test/query_load_test.js
+```
+
+Override the target with `BASE_URL` (defaults to `http://localhost:8000`).
+To land k6's own run metrics (latency percentiles, VU counts, checks) in the
+same SigNoz instance as the app's traces/metrics, point k6's built-in OTel
+output at the SigNoz collector started above:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+  k6 run -o experimental-opentelemetry scripts/load_test/query_load_test.js
+```
+
+The exact output-flag name has drifted across k6 versions — check
+`k6 run -h` for the installed version if `experimental-opentelemetry` isn't
+recognized.
+
 ## Running tests
 
 ```bash

@@ -16,7 +16,10 @@ columns in the export are ignored.
 
 import csv
 
+from config.telemetry import ingestion_stage_counter, traced
 
+
+@traced("ingestion.drugbank_vocab.load_vocab_csv")
 def load_vocab_csv(path: str) -> list[dict]:
     """Read the DrugBank open-vocabulary CSV at `path` and return one
     normalized dict per row: `{name (lowercased common name), display_name
@@ -42,9 +45,13 @@ def load_vocab_csv(path: str) -> list[dict]:
                     "aliases": aliases,
                 }
             )
+    ingestion_stage_counter.add(
+        len(rows), {"module": "drugbank_vocab", "function": "load_vocab_csv"}
+    )
     return rows
 
 
+@traced("ingestion.drugbank_vocab.enrich_molecules")
 def enrich_molecules(vocab_rows: list[dict]) -> list[dict]:
     """Shape `load_vocab_csv`'s output for `neo4j_loader.load_entities(...,
     label="Molecule")`. Uses the same `name` key as PubMed/ChEMBL-derived

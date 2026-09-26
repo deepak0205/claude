@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # --- Anthropic ---
     ANTHROPIC_API_KEY: str = ""
 
+    # Optional override of the Anthropic API's base URL. Point this at a
+    # local Anthropic-Messages-API-compatible proxy (e.g. LiteLLM, a
+    # corporate gateway) to route every LLM call there instead of
+    # api.anthropic.com. Left empty (default), the SDK uses its own default
+    # endpoint. Wired into `agents/llm.py`'s client construction only.
+    ANTHROPIC_BASE_URL: str = ""
+
     # Per-role model overrides (see plan's "Model / Embedding Choices" table).
     # `MEMORY_SUMMARIZER_MODEL` above already covers the memory-fold/query-
     # contextualization role; these cover Supervisor/sub-agents/synthesis.
@@ -84,6 +91,17 @@ class Settings(BaseSettings):
 
     # OpenTargets GraphQL API, no key required.
     OPENTARGETS_GRAPHQL_URL: str = "https://api.platform.opentargets.org/api/v4/graphql"
+
+    # --- OpenTelemetry ---
+
+    # Opt-in: off by default so no exporter/background thread/network
+    # activity happens (and no test mocking is needed) unless explicitly
+    # enabled via .env.
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "agentic-rag-poc"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_EXPORTER_OTLP_PROTOCOL: str = "grpc"
+    OTEL_METRICS_EXPORT_INTERVAL_MS: int = 15000
 
 
 settings = Settings()

@@ -10,6 +10,7 @@ the client entirely).
 import voyageai
 
 from config.settings import settings
+from config.telemetry import ingestion_stage_counter, traced
 
 # Voyage's batch embed endpoint accepts many texts per call; chunk into
 # groups of 128 as a conservative, well-under-any-documented-limit default.
@@ -25,6 +26,7 @@ def _get_client() -> voyageai.Client:
     return _client
 
 
+@traced("ingestion.embedding.embed_documents")
 def embed_documents(texts: list[str]) -> list[list[float]]:
     """Embed `texts` for indexing (`input_type="document"`), batched in
     groups of `_BATCH_SIZE`."""
@@ -37,9 +39,13 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
         batch = texts[start : start + _BATCH_SIZE]
         result = client.embed(batch, model=settings.VOYAGE_EMBED_MODEL, input_type="document")
         embeddings.extend(result.embeddings)
+    ingestion_stage_counter.add(
+        len(embeddings), {"module": "embedding", "function": "embed_documents"}
+    )
     return embeddings
 
 
+@traced("ingestion.embedding.embed_query")
 def embed_query(text: str) -> list[float]:
     """Embed a single query string (`input_type="query"`)."""
     client = _get_client()

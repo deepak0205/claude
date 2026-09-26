@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from agents.base_subagent import make_agent_node
 from agents.state import AgentResult
+from agents.supervisor import AGENT_DESCRIPTIONS
 from agents.tools import StubToolProvider
 
 
@@ -61,6 +62,25 @@ def test_real_path_filters_citations_to_seen_pmids_and_clamps_confidence():
     assert result.key_citations == ["111"]
     assert result.confidence == 1.0
     tool_provider.execute.assert_called_once_with("search_evidence", {"query": "EGFR"})
+
+
+def test_real_path_builds_grounded_system_prompt():
+    tool_provider = MagicMock()
+    tool_provider.tools = [{"name": "search_evidence"}]
+
+    def fake_run_agent_loop(model, system, user_content, tools, tool_executor, finish_tool_name, finish_tool_schema, max_iterations=5):
+        return {"summary": "found stuff", "key_citations": [], "confidence": 0.5}
+
+    with patch("agents.base_subagent.run_agent_loop", side_effect=fake_run_agent_loop) as mock_run_agent_loop:
+        node = make_agent_node("literature", tool_provider, model="claude-sonnet-5")
+        node("some query", True)
+
+    _, kwargs = mock_run_agent_loop.call_args
+    system = kwargs["system"]
+    assert AGENT_DESCRIPTIONS["literature"] in system
+    assert "search_evidence" in system
+    assert "PMID" in system
+    assert "..." not in system
 
 
 def test_real_path_exception_falls_back_to_error_result():

@@ -1,0 +1,22 @@
+# LiteLLM proxy config: exposes an Anthropic-Messages-API-compatible
+# `/v1/messages` endpoint locally, backed by a local Ollama model, so
+# agent_poc (via ANTHROPIC_BASE_URL) never calls the real Anthropic API.
+#
+# Model names below match the literals agent_poc already uses
+# (config/settings.py's SUPERVISOR_MODEL/SUBAGENT_MODEL/SYNTHESIS_MODEL
+# defaults, and agents/memory.py's MEMORY_SUMMARIZER_MODEL), all pointed at
+# the same local model — no app code changes needed.
+
+model_list:
+  - model_name: claude-sonnet-5
+    litellm_params:
+      model: ollama/qwen2.5:7b-instruct
+      api_base: http://localhost:11434
+  - model_name: claude-opus-5
+    litellm_params:
+      model: ollama/qwen2.5:7b-instruct
+      api_base: http://localhost:11434
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: ollama/qwen2.5:7b-instruct
+      api_base: http://localhost:11434
