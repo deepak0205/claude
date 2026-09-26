@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+*.log
+graphify-out/.graphify_python
+graphify-out/.graphify_root

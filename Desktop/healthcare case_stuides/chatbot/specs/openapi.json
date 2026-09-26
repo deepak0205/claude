@@ -1,0 +1,336 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Case Study Chatbot",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "summary": "Chat",
+        "operationId": "chat_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Metrics",
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/corpus": {
+      "get": {
+        "summary": "Corpus",
+        "operationId": "corpus_corpus_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest"
+      },
+      "ChatResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "answer"
+        ],
+        "title": "ChatResponse"
+      },
+      "CorpusResponse": {
+        "properties": {
+          "total_docs": {
+            "type": "integer",
+            "title": "Total Docs"
+          },
+          "total_chunks": {
+            "type": "integer",
+            "title": "Total Chunks"
+          },
+          "total_chars": {
+            "type": "integer",
+            "title": "Total Chars"
+          },
+          "docs": {
+            "items": {
+              "$ref": "#/components/schemas/DocStats"
+            },
+            "type": "array",
+            "title": "Docs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_docs",
+          "total_chunks",
+          "total_chars",
+          "docs"
+        ],
+        "title": "CorpusResponse"
+      },
+      "DocStats": {
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count"
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "chunk_count",
+          "char_count"
+        ],
+        "title": "DocStats"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "MetricsResponse": {
+        "properties": {
+          "total_requests": {
+            "type": "integer",
+            "title": "Total Requests"
+          },
+          "avg_latency_ms": {
+            "type": "number",
+            "title": "Avg Latency Ms"
+          },
+          "recent_requests": {
+            "items": {
+              "$ref": "#/components/schemas/RequestLogEntry"
+            },
+            "type": "array",
+            "title": "Recent Requests"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_requests",
+          "avg_latency_ms",
+          "recent_requests"
+        ],
+        "title": "MetricsResponse"
+      },
+      "RequestLogEntry": {
+        "properties": {
+          "timestamp": {
+            "type": "number",
+            "title": "Timestamp"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "question_chars": {
+            "type": "integer",
+            "title": "Question Chars"
+          },
+          "chunks_retrieved": {
+            "type": "integer",
+            "title": "Chunks Retrieved"
+          },
+          "context_chars": {
+            "type": "integer",
+            "title": "Context Chars"
+          },
+          "response_chars": {
+            "type": "integer",
+            "title": "Response Chars"
+          },
+          "latency_ms": {
+            "type": "number",
+            "title": "Latency Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "session_id",
+          "question_chars",
+          "chunks_retrieved",
+          "context_chars",
+          "response_chars",
+          "latency_ms"
+        ],
+        "title": "RequestLogEntry"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

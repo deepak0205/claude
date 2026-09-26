@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - graphify-out/graph.html</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
+  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: #2a2a4e; }
+  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: #e0e0e0; }
+  #info-content .empty { color: #555; font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
+  .neighbor-link:hover { background: #2a2a4e; }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: #666; font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #aaa; user-select: none; }
+  #legend-controls label:hover { color: #e0e0e0; }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #3a3a5e; border-radius: 3px; background: #0f0f1a; cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">66 nodes &middot; 78 edges &middot; 8 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "backend_docs_elation_health_hld_lld_audit_logging", "label": "Audit & Logging", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Audit &amp; Logging", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_chart_summary_endpoint", "label": "POST /internal/chart-summary/{patientId}", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "POST /internal/chart-summary/{patientId}", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_chart_summary_service", "label": "Chart-Summary Service", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Chart-Summary Service", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 14}, {"id": "backend_docs_elation_health_hld_lld_claude_api", "label": "Claude API", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Claude API", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_elation_health_hld_lld_elation_backend", "label": "Elation Backend", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation Backend", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_elation_ehr_web_app", "label": "Elation EHR Web App", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation EHR Web App", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_feedback_endpoint", "label": "POST /internal/chart-summary/{patientId}/feedback", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "POST /internal/chart-summary/{patientId}/feedback", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_feedback_loop", "label": "Feedback Loop", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Feedback Loop", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_prompt_template", "label": "Clinical-Summarization Prompt Template", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Clinical-Summarization Prompt Template", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_baa_compliance", "label": "BAA Compliance", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "BAA Compliance", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 3}, {"id": "backend_docs_elation_health_hld_lld_caching_strategy", "label": "Caching Strategy", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Caching Strategy", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_deidentification_boundary", "label": "De-identification Boundary", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "De-identification Boundary", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_latency_budget_decision", "label": "Latency Budget (<3s)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Latency Budget (&lt;3s)", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_output_contract", "label": "Output JSON Contract", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Output JSON Contract", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_server_side_model_call_decision", "label": "Server-side Model Call Decision", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Server-side Model Call Decision", "community": 0, "community_name": "Elation Chart-Summary Architecture", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_banner_health", "label": "Banner Health", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 25.0, "font": {"size": 12, "color": "#ffffff"}, "title": "Banner Health", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 7}, {"id": "backend_docs_claude_healthcare_case_studies_bannerwise", "label": "BannerWise", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "BannerWise", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_claude_sonnet_4_5", "label": "Claude Sonnet 4.5", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Claude Sonnet 4.5", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_development_plan_phase_7", "label": "Phase 7: Phased Rollout", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Phase 7: Phased Rollout", "community": 1, "community_name": "Banner Health Rollout", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld_banner_health", "label": "Banner Health", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Banner Health", "community": 1, "community_name": "Banner Health Rollout", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_rollout_plan", "label": "Rollout Plan", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Rollout Plan", "community": 1, "community_name": "Banner Health Rollout", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_plan_graphify", "label": "/graphify", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "/graphify", "community": 1, "community_name": "Banner Health Rollout", "source_file": "PLAN.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_claude_healthcare_case_studies", "label": "Claude in Healthcare \u2014 5 Case Studies", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 20.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Claude in Healthcare \u2014 5 Case Studies", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "document", "degree": 5}, {"id": "backend_docs_claude_healthcare_case_studies_banner_health_case_study", "label": "Banner Health Case Study (claude.com)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Banner Health Case Study (claude.com)", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "document", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_healthcare_life_sciences_announcement", "label": "Advancing Claude in Healthcare and the Life Sciences (Anthropic, 2026)", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Advancing Claude in Healthcare and the Life Sciences (Anthropic, 2026)", "community": 1, "community_name": "Banner Health Rollout", "source_file": "claude-healthcare-case-studies.md", "file_type": "document", "degree": 1}, {"id": "backend_docs_plan", "label": "Plan: Claude in Healthcare \u2014 5 Case Studies", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Plan: Claude in Healthcare \u2014 5 Case Studies", "community": 1, "community_name": "Banner Health Rollout", "source_file": "PLAN.md", "file_type": "document", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_61pct_reduction_metric", "label": "61% Chart-Review Time Reduction", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "61% Chart-Review Time Reduction", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_claude_healthcare_case_studies_elation_health", "label": "Elation Health", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 18.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Elation Health", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 4}, {"id": "backend_docs_elation_health_hld_lld_elation_health", "label": "Elation Health", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation Health", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_metrics_to_track", "label": "Metrics to Track", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Metrics to Track", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_plan_elation_health", "label": "Elation Health", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation Health", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "PLAN.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_development_plan", "label": "Elation Health Chart-Summary Development Plan", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation Health Chart-Summary Development Plan", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "elation-health-development-plan.md", "file_type": "document", "degree": 1}, {"id": "backend_docs_elation_health_hld_lld", "label": "Elation Health \u00d7 Claude HLD & LLD", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Elation Health \u00d7 Claude HLD &amp; LLD", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "elation-health-hld-lld.md", "file_type": "document", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_distribution_model", "label": "Distribution Model", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 18.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Distribution Model", "community": 2, "community_name": "Elation Impact Metrics", "source_file": "claude-healthcare-case-studies.md", "file_type": "rationale", "degree": 4}, {"id": "backend_docs_claude_healthcare_case_studies_amazon_bedrock", "label": "Amazon Bedrock", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Amazon Bedrock", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "label": "Carta Healthcare", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 20.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Carta Healthcare", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 5}, {"id": "backend_docs_claude_healthcare_case_studies_lighthouse", "label": "Lighthouse", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Lighthouse", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_amazon_bedrock", "label": "Amazon Bedrock", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Amazon Bedrock", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_elation_health_hld_lld_carta_healthcare", "label": "Carta Healthcare", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Carta Healthcare", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "elation-health-hld-lld.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_plan_carta_healthcare", "label": "Carta Healthcare", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Carta Healthcare", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "PLAN.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_carta_healthcare_case_study", "label": "Carta Healthcare Case Study (claude.com)", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Carta Healthcare Case Study (claude.com)", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "claude-healthcare-case-studies.md", "file_type": "document", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_bedrock_decision", "label": "Model Access Path: Bedrock over Direct API", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Model Access Path: Bedrock over Direct API", "community": 3, "community_name": "Carta Healthcare on Bedrock", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 3}, {"id": "backend_docs_claude_healthcare_case_studies_qualified_health", "label": "Qualified Health", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 18.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Qualified Health", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 4}, {"id": "backend_docs_claude_healthcare_case_studies_university_of_texas_medical_branch", "label": "University of Texas Medical Branch", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "University of Texas Medical Branch", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_claude_healthcare_case_studies_university_of_texas_system", "label": "University of Texas System", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "University of Texas System", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_plan_banner_health", "label": "Banner Health", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Banner Health", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "PLAN.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_plan_qualified_health", "label": "Qualified Health", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Qualified Health", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "PLAN.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_claude_for_healthcare_page", "label": "Claude for Healthcare (Solutions Page)", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Claude for Healthcare (Solutions Page)", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "claude-healthcare-case-studies.md", "file_type": "document", "degree": 2}, {"id": "backend_docs_plan_case_study_structure", "label": "Per-Case-Study Structure", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 20.7, "font": {"size": 12, "color": "#ffffff"}, "title": "Per-Case-Study Structure", "community": 4, "community_name": "Qualified Health Case Study", "source_file": "PLAN.md", "file_type": "rationale", "degree": 5}, {"id": "backend_docs_elation_health_development_plan_chart_summary_service", "label": "Chart-Summary Service", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Chart-Summary Service", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_elation_health_development_plan_phase_0", "label": "Phase 0: Requirements & Compliance Sign-off", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 18.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Phase 0: Requirements &amp; Compliance Sign-off", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 4}, {"id": "backend_docs_elation_health_development_plan_phase_2", "label": "Phase 2: Chart-Summary Service Skeleton", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Phase 2: Chart-Summary Service Skeleton", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_elation_health_development_plan_phase_6", "label": "Phase 6: Pilot", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Phase 6: Pilot", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_development_plan_baa_compliance", "label": "BAA Compliance", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "BAA Compliance", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "rationale", "degree": 2}, {"id": "backend_docs_elation_health_development_plan_scope_assumption", "label": "Prototype/Demo Scope Assumption", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Prototype/Demo Scope Assumption", "community": 5, "community_name": "Compliance & Pilot Phases", "source_file": "elation-health-development-plan.md", "file_type": "rationale", "degree": 2}, {"id": "backend_docs_elation_health_development_plan_phase_1", "label": "Phase 1: Prompt & Data-Contract Prototyping", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Phase 1: Prompt &amp; Data-Contract Prototyping", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_development_plan_phase_3", "label": "Phase 3: Claude Integration", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Phase 3: Claude Integration", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 3}, {"id": "backend_docs_elation_health_development_plan_phase_4", "label": "Phase 4: Security & Audit Layer", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Phase 4: Security &amp; Audit Layer", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_elation_health_development_plan_phase_5", "label": "Phase 5: Frontend Integration", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Phase 5: Frontend Integration", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-development-plan.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_elation_health_development_plan_bedrock_or_direct_api", "label": "Bedrock or Direct API Decision", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Bedrock or Direct API Decision", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-development-plan.md", "file_type": "rationale", "degree": 2}, {"id": "backend_docs_elation_health_hld_lld_error_handling", "label": "Error Handling Table", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Error Handling Table", "community": 6, "community_name": "Build Phases & Error Handling", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_ambient_ai", "label": "Ambient AI", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 12.1, "font": {"size": 0, "color": "#ffffff"}, "title": "Ambient AI", "community": 7, "community_name": "Commure Ambient AI Safety", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 1}, {"id": "backend_docs_claude_healthcare_case_studies_commure", "label": "Commure", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 18.6, "font": {"size": 12, "color": "#ffffff"}, "title": "Commure", "community": 7, "community_name": "Commure Ambient AI Safety", "source_file": "claude-healthcare-case-studies.md", "file_type": "concept", "degree": 4}, {"id": "backend_docs_plan_commure", "label": "Commure", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Commure", "community": 7, "community_name": "Commure Ambient AI Safety", "source_file": "PLAN.md", "file_type": "concept", "degree": 2}, {"id": "backend_docs_claude_healthcare_case_studies_constitutional_ai", "label": "Constitutional AI", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 16.4, "font": {"size": 12, "color": "#ffffff"}, "title": "Constitutional AI", "community": 7, "community_name": "Commure Ambient AI Safety", "source_file": "claude-healthcare-case-studies.md", "file_type": "rationale", "degree": 3}, {"id": "backend_docs_elation_health_hld_lld_advisory_not_authoritative_decision", "label": "Summary Advisory, Not Authoritative", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 14.3, "font": {"size": 0, "color": "#ffffff"}, "title": "Summary Advisory, Not Authoritative", "community": 7, "community_name": "Commure Ambient AI Safety", "source_file": "elation-health-hld-lld.md", "file_type": "rationale", "degree": 2}];
+const RAW_EDGES = [{"from": "backend_docs_elation_health_hld_lld_audit_logging", "to": "backend_docs_elation_health_hld_lld_chart_summary_service", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_endpoint", "to": "backend_docs_elation_health_hld_lld_chart_summary_service", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_claude_api", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_elation_backend", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_advisory_not_authoritative_decision", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_latency_budget_decision", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_server_side_model_call_decision", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_caching_strategy", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_deidentification_boundary", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_error_handling", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_feedback_endpoint", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_output_contract", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_hld_lld_prompt_template", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_chart_summary_service", "to": "backend_docs_elation_health_development_plan_chart_summary_service", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_elation_health_hld_lld_claude_api", "to": "backend_docs_elation_health_hld_lld_bedrock_decision", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_claude_api", "to": "backend_docs_elation_health_hld_lld_baa_compliance", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_elation_backend", "to": "backend_docs_elation_health_hld_lld_elation_ehr_web_app", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_feedback_endpoint", "to": "backend_docs_elation_health_hld_lld_feedback_loop", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_baa_compliance", "to": "backend_docs_elation_health_hld_lld_server_side_model_call_decision", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_baa_compliance", "to": "backend_docs_elation_health_development_plan_baa_compliance", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_claude_healthcare_case_studies_banner_health_case_study", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_elation_health_development_plan_phase_7", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_claude_healthcare_case_studies_distribution_model", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_claude_healthcare_case_studies_bannerwise", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_claude_healthcare_case_studies_constitutional_ai", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_elation_health_hld_lld_banner_health", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_banner_health", "to": "backend_docs_plan_banner_health", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_bannerwise", "to": "backend_docs_claude_healthcare_case_studies_claude_sonnet_4_5", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_banner_health", "to": "backend_docs_elation_health_hld_lld_rollout_plan", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_plan_graphify", "to": "backend_docs_plan", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies", "to": "backend_docs_claude_healthcare_case_studies_banner_health_case_study", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies", "to": "backend_docs_claude_healthcare_case_studies_carta_healthcare_case_study", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies", "to": "backend_docs_claude_healthcare_case_studies_claude_for_healthcare_page", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies", "to": "backend_docs_claude_healthcare_case_studies_healthcare_life_sciences_announcement", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies", "to": "backend_docs_plan", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_61pct_reduction_metric", "to": "backend_docs_claude_healthcare_case_studies_elation_health", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_61pct_reduction_metric", "to": "backend_docs_elation_health_development_plan_phase_0", "label": "references", "title": "references [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_61pct_reduction_metric", "to": "backend_docs_elation_health_hld_lld_metrics_to_track", "label": "references", "title": "references [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_elation_health", "to": "backend_docs_claude_healthcare_case_studies_distribution_model", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_elation_health", "to": "backend_docs_elation_health_hld_lld_elation_health", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_elation_health", "to": "backend_docs_plan_elation_health", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_elation_health_hld_lld_elation_health", "to": "backend_docs_elation_health_hld_lld", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_plan_elation_health", "to": "backend_docs_plan_case_study_structure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan", "to": "backend_docs_elation_health_hld_lld", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_distribution_model", "to": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_distribution_model", "to": "backend_docs_claude_healthcare_case_studies_commure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_amazon_bedrock", "to": "backend_docs_claude_healthcare_case_studies_lighthouse", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_amazon_bedrock", "to": "backend_docs_elation_health_hld_lld_amazon_bedrock", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "to": "backend_docs_claude_healthcare_case_studies_carta_healthcare_case_study", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "to": "backend_docs_claude_healthcare_case_studies_lighthouse", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "to": "backend_docs_elation_health_hld_lld_carta_healthcare", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_carta_healthcare", "to": "backend_docs_plan_carta_healthcare", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_elation_health_hld_lld_amazon_bedrock", "to": "backend_docs_elation_health_hld_lld_bedrock_decision", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_hld_lld_amazon_bedrock", "to": "backend_docs_elation_health_development_plan_bedrock_or_direct_api", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_elation_health_hld_lld_carta_healthcare", "to": "backend_docs_elation_health_hld_lld_bedrock_decision", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_plan_carta_healthcare", "to": "backend_docs_plan_case_study_structure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_qualified_health", "to": "backend_docs_claude_healthcare_case_studies_claude_for_healthcare_page", "label": "cites", "title": "cites [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_qualified_health", "to": "backend_docs_claude_healthcare_case_studies_university_of_texas_system", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_qualified_health", "to": "backend_docs_claude_healthcare_case_studies_university_of_texas_medical_branch", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_qualified_health", "to": "backend_docs_plan_qualified_health", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_plan_banner_health", "to": "backend_docs_plan_case_study_structure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_plan_qualified_health", "to": "backend_docs_plan_case_study_structure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_plan_case_study_structure", "to": "backend_docs_plan_commure", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_chart_summary_service", "to": "backend_docs_elation_health_development_plan_phase_2", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_chart_summary_service", "to": "backend_docs_elation_health_development_plan_scope_assumption", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_0", "to": "backend_docs_elation_health_development_plan_baa_compliance", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_0", "to": "backend_docs_elation_health_development_plan_phase_2", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_0", "to": "backend_docs_elation_health_development_plan_phase_6", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_2", "to": "backend_docs_elation_health_development_plan_scope_assumption", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_1", "to": "backend_docs_elation_health_development_plan_phase_3", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_1", "to": "backend_docs_elation_health_hld_lld_error_handling", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_elation_health_development_plan_phase_3", "to": "backend_docs_elation_health_development_plan_bedrock_or_direct_api", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_3", "to": "backend_docs_elation_health_development_plan_phase_5", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_elation_health_development_plan_phase_4", "to": "backend_docs_elation_health_development_plan_phase_5", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_ambient_ai", "to": "backend_docs_claude_healthcare_case_studies_commure", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "backend_docs_claude_healthcare_case_studies_commure", "to": "backend_docs_claude_healthcare_case_studies_constitutional_ai", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_commure", "to": "backend_docs_plan_commure", "label": "shares_data_with", "title": "shares_data_with [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "backend_docs_claude_healthcare_case_studies_constitutional_ai", "to": "backend_docs_elation_health_hld_lld_advisory_not_authoritative_decision", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Elation Chart-Summary Architecture", "count": 15}, {"cid": 1, "color": "#F28E2B", "label": "Banner Health Rollout", "count": 11}, {"cid": 2, "color": "#E15759", "label": "Elation Impact Metrics", "count": 8}, {"cid": 3, "color": "#76B7B2", "label": "Carta Healthcare on Bedrock", "count": 8}, {"cid": 4, "color": "#59A14F", "label": "Qualified Health Case Study", "count": 7}, {"cid": 5, "color": "#EDC948", "label": "Compliance &amp; Pilot Phases", "count": 6}, {"cid": 6, "color": "#B07AA1", "label": "Build Phases &amp; Error Handling", "count": 6}, {"cid": 7, "color": "#FF9DA7", "label": "Commure Ambient AI Safety", "count": 5}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  _community: n.community, _community_name: n.community_name,
+  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" data-nid="${esc(nid)}">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  document.getElementById('info-content').innerHTML = `
+    <div class="field"><b>${esc(n.label)}</b></div>
+    <div class="field">Type: ${esc(n._file_type || 'unknown')}</div>
+    <div class="field">Community: ${esc(n._community_name)}</div>
+    <div class="field">Source: ${esc(n._source_file || '-')}</div>
+    <div class="field">Degree: ${n._degree}</div>
+    ${neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>` : ''}
+  `;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Neighbor links use a data attribute + one delegated listener rather than an
+// inline onclick. A node id/label sourced from a document or a scraped URL
+// (graphify add) can contain a double-quote; dropping the stringified id
+// unescaped into a quoted onclick both broke every link and allowed a hostile
+// source to inject an event handler into the local report (stored XSS, #1838).
+// esc() on data-nid keeps the value inside the attribute; the listener reads it
+// back verbatim. Bound to document so it survives the innerHTML rebuild that
+// recreates #neighbors-list on each showInfo().
+document.addEventListener('click', e => {
+  const el = e.target.closest('.neighbor-link');
+  if (el && el.dataset.nid !== undefined) focusNode(el.dataset.nid);
+});
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [{"id": "case_studies_documentation_burden_reduction_mode", "label": "Documentation/Administrative Burden Reduction Mode", "nodes": ["backend_docs_claude_healthcare_case_studies_banner_health", "backend_docs_claude_healthcare_case_studies_elation_health", "backend_docs_claude_healthcare_case_studies_commure"], "relation": "participate_in", "confidence": "EXTRACTED", "confidence_score": 1.0, "source_file": "claude-healthcare-case-studies.md"}, {"id": "phased_specialty_rollout_pattern", "label": "Phased Specialty Rollout Pattern (mirrors Banner Health)", "nodes": ["backend_docs_elation_health_development_plan_phase_7", "backend_docs_elation_health_hld_lld_rollout_plan", "backend_docs_claude_healthcare_case_studies_banner_health"], "relation": "participate_in", "confidence": "INFERRED", "confidence_score": 0.8, "source_file": "elation-health-development-plan.md"}, {"id": "elation_phi_protection_pipeline", "label": "PHI Protection Pipeline (De-identification \u2192 Model Call \u2192 Audit)", "nodes": ["backend_docs_elation_health_hld_lld_chart_summary_service", "backend_docs_elation_health_hld_lld_deidentification_boundary", "backend_docs_elation_health_hld_lld_claude_api", "backend_docs_elation_health_hld_lld_audit_logging"], "relation": "form", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "elation-health-hld-lld.md"}];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+
+// Andrew's monotone chain. Returns the hull in counter-clockwise order, which
+// is what the perimeter must be traced in. Collinear and duplicate points
+// collapse to the extremes, so degenerate member sets render as a segment
+// rather than a zero-area crossed path.
+function convexHull(pts) {
+    const p = pts.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (p.length < 3) return p;
+    const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+    const build = seq => {
+        const out = [];
+        for (const q of seq) {
+            while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+            out.push(q);
+        }
+        out.pop();
+        return out;
+    };
+    const hull = build(p).concat(build(p.slice().reverse()));
+    return hull.length >= 3 ? hull : p;
+}
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates.
+        // The perimeter must follow hull order, not h.nodes order: tracing the
+        // raw member order self-intersects whenever the layout does not happen
+        // to place members in angular order, filling as crossed wedges.
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const hull = convexHull(positions);
+        const expanded = hull.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>
